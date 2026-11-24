@@ -6,6 +6,11 @@ import { prisma } from './config/db';
 import { redisClient } from './config/redis';
 import { esClient, EMAIL_INDEX } from './config/elasticsearch';
 
+import campaignRoutes from './routes/campaign.routes';
+import emailRoutes from './routes/email.routes';
+import senderRoutes from './routes/sender.routes';
+import authRoutes from './routes/auth.routes';
+
 export const app = express();
 
 app.use(helmet({
@@ -19,6 +24,12 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Mount REST API routes
+app.use('/api/auth', authRoutes);
+app.use('/api/campaigns', campaignRoutes);
+app.use('/api/emails', emailRoutes);
+app.use('/api/senders', senderRoutes);
 
 // Basic health check
 app.get('/health', (_req: Request, res: Response) => {
