@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
+router.get('/search', requireAuth, EmailController.search);
 router.get('/scheduled', requireAuth, EmailController.getScheduled);
 router.get('/sent', requireAuth, EmailController.getSent);
 router.get('/stats', requireAuth, EmailController.getStats);
