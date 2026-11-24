@@ -1,10 +1,11 @@
 import React from 'react';
 import { Email } from '../../types';
-import { Clock, AlertCircle, XCircle } from 'lucide-react';
+import { Clock, Star, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface ScheduledTableProps {
   emails: Email[];
   loading: boolean;
+  onSelectEmail?: (email: Email) => void;
   onCancelCampaign?: (campaignId: string) => void;
   pagination: {
     page: number;
@@ -17,53 +18,40 @@ interface ScheduledTableProps {
 export const ScheduledTable: React.FC<ScheduledTableProps> = ({
   emails,
   loading,
+  onSelectEmail,
   onCancelCampaign,
   pagination,
   onPageChange,
 }) => {
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'deferred':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5 animate-pulse"></span>
-            Deferred (Rate Limit)
-          </span>
-        );
-      case 'processing':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-spin"></span>
-            Sending...
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
-            <Clock className="w-3 h-3 mr-1 text-indigo-500" />
-            Scheduled
-          </span>
-        );
-    }
+  const formatTimeBadge = (dateString: string) => {
+    const d = new Date(dateString);
+    const day = d.toLocaleDateString('en-US', { weekday: 'short' });
+    const time = d.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+    return `${day} ${time}`;
   };
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <p className="mt-3 text-sm text-gray-500">Loading scheduled emails from PostgreSQL...</p>
+      <div className="p-16 text-center bg-white flex flex-col items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-[#00A854] border-t-transparent animate-spin mb-3"></div>
+        <p className="text-xs text-gray-500 font-medium">Loading scheduled queue...</p>
       </div>
     );
   }
 
   if (emails.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-        <div className="w-12 h-12 bg-gray-100 text-gray-400 rounded-full flex items-center justify-center mx-auto mb-3">
+      <div className="p-16 text-center bg-white flex flex-col items-center justify-center">
+        <div className="w-12 h-12 bg-gray-50 text-gray-400 rounded-full flex items-center justify-center mx-auto mb-3">
           <Clock className="w-6 h-6" />
         </div>
-        <h4 className="text-base font-semibold text-gray-900">No scheduled emails in queue</h4>
-        <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">
+        <h4 className="text-sm font-semibold text-gray-900">No scheduled emails in queue</h4>
+        <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
           All campaigns have been processed or no emails are currently waiting for dispatch.
         </p>
       </div>
@@ -71,89 +59,97 @@ export const ScheduledTable: React.FC<ScheduledTableProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Recipient
-              </th>
-              <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Subject
-              </th>
-              <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Scheduled For
-              </th>
-              <th className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Sender
-              </th>
-              <th className="px-6 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Action
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 bg-white text-sm">
-            {emails.map((email) => (
-              <tr key={email.id} className="hover:bg-gray-50/70 transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="font-medium text-gray-900">{email.recipient}</div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="text-gray-900 truncate max-w-xs font-medium">{email.subject}</div>
-                  <div className="text-xs text-gray-500 truncate max-w-xs">{email.body}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(email.status)}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-gray-600 text-xs">
-                  <div>{new Date(email.scheduledAt).toLocaleDateString()}</div>
-                  <div className="text-gray-400 font-mono">{new Date(email.scheduledAt).toLocaleTimeString()}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
-                  {email.sender?.email || 'Default Sender'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-medium">
-                  {onCancelCampaign && email.campaignId && (
-                    <button
-                      onClick={() => onCancelCampaign(email.campaignId)}
-                      className="text-red-600 hover:text-red-900 inline-flex items-center space-x-1 hover:bg-red-50 px-2 py-1 rounded transition-colors"
-                      title="Cancel Campaign"
-                    >
-                      <XCircle className="w-3.5 h-3.5" />
-                      <span>Cancel</span>
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="bg-white flex flex-col h-full">
+      {/* Gmail-style Email Rows (Figma node 64-2) */}
+      <div className="divide-y divide-gray-100 flex-1">
+        {emails.map((email) => {
+          const cleanSnippet = email.body.replace(/<[^>]*>?/gm, '').trim();
+
+          return (
+            <div
+              key={email.id}
+              onClick={() => onSelectEmail?.(email)}
+              className="flex items-center px-6 py-3.5 hover:bg-[#F9FAFB] cursor-pointer transition-colors group text-sm select-none"
+            >
+              {/* Recipient */}
+              <div className="w-48 sm:w-56 shrink-0 font-medium text-gray-900 truncate pr-3">
+                <span>To: {email.recipient}</span>
+              </div>
+
+              {/* Scheduled Badge (Figma: soft orange pill with clock icon) */}
+              <div className="shrink-0 mr-4">
+                {email.status === 'deferred' ? (
+                  <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    <span>Deferred</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#FFF3E0] text-[#E65100] border border-[#FFE0B2]">
+                    <Clock className="w-3 h-3 text-[#E65100] shrink-0" />
+                    <span>{formatTimeBadge(email.scheduledAt)}</span>
+                  </span>
+                )}
+              </div>
+
+              {/* Subject & Body Snippet Inline */}
+              <div className="flex-1 min-w-0 flex items-center truncate mr-4">
+                <span className="font-semibold text-gray-900 truncate shrink-0 max-w-xs">
+                  {email.subject}
+                </span>
+                <span className="text-gray-500 truncate ml-2 text-xs">
+                  - {cleanSnippet || 'No additional text'}
+                </span>
+              </div>
+
+              {/* Action / Star */}
+              <div className="flex items-center space-x-2 shrink-0">
+                {onCancelCampaign && email.status === 'scheduled' && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCancelCampaign(email.campaignId);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 rounded transition-all"
+                    title="Cancel Campaign"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-1 text-gray-300 hover:text-amber-400 transition-colors"
+                >
+                  <Star className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Pagination Footer */}
       {pagination.totalPages > 1 && (
-        <div className="px-6 py-3 flex items-center justify-between border-t border-gray-200 bg-gray-50">
-          <div className="text-xs text-gray-500">
-            Showing <span className="font-medium">{(pagination.page - 1) * 15 + 1}</span> to{' '}
-            <span className="font-medium">{Math.min(pagination.page * 15, pagination.total)}</span> of{' '}
-            <span className="font-medium">{pagination.total}</span> emails
-          </div>
-          <div className="flex space-x-2">
+        <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between bg-white text-xs text-gray-500">
+          <span>
+            Total: <strong className="font-semibold text-gray-800">{pagination.total}</strong> emails
+          </span>
+          <div className="flex items-center space-x-2">
             <button
-              disabled={pagination.page <= 1}
               onClick={() => onPageChange(pagination.page - 1)}
-              className="px-3 py-1 text-xs border border-gray-300 rounded bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              disabled={pagination.page <= 1}
+              className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors"
             >
-              Previous
+              <ChevronLeft className="w-4 h-4" />
             </button>
+            <span>
+              Page {pagination.page} of {pagination.totalPages}
+            </span>
             <button
-              disabled={pagination.page >= pagination.totalPages}
               onClick={() => onPageChange(pagination.page + 1)}
-              className="px-3 py-1 text-xs border border-gray-300 rounded bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              disabled={pagination.page >= pagination.totalPages}
+              className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors"
             >
-              Next
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>
