@@ -10,8 +10,14 @@ import campaignRoutes from './routes/campaign.routes';
 import emailRoutes from './routes/email.routes';
 import senderRoutes from './routes/sender.routes';
 import authRoutes from './routes/auth.routes';
+import slackRoutes from './routes/slack.routes';
+import { setupBullBoard } from './queues/bullboard';
 
 export const app = express();
+
+// Bull Board UI for queue monitoring
+const bullBoardAdapter = setupBullBoard();
+app.use('/admin/queues', bullBoardAdapter.getRouter());
 
 app.use(helmet({
   contentSecurityPolicy: false, // Allows Bull Board and dev tools
@@ -30,6 +36,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/emails', emailRoutes);
 app.use('/api/senders', senderRoutes);
+app.use('/api/slack', slackRoutes);
 
 // Basic health check
 app.get('/health', (_req: Request, res: Response) => {

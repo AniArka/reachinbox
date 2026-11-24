@@ -8,6 +8,7 @@ import { createEtherealTransporter } from '../integrations/smtp/ethereal';
 import { decrypt } from '../utils/encryption';
 import { DistributedRateLimiter } from '../utils/rateLimiter';
 import { EmailIndexer } from '../integrations/elasticsearch/indexer';
+import { SlackNotificationService } from '../integrations/slack/slack.service';
 import { EmailStatus, CampaignStatus, EmailJobData } from '@reachinbox/shared';
 
 export class EmailWorkerService {
@@ -119,6 +120,18 @@ export class EmailWorkerService {
           },
         },
       });
+
+      // If hourly limit was hit, trigger deduplicated Slack notification
+      if (rateLimit.currentCount >= rateLimit.hourlyLimit) {
+        SlackNotificationService.notifyRateLimitReached(
+          email.userId,
+          sender.email,
+          sender.id,
+          rateLimit.hourlyLimit,
+          rateLimit.windowKey,
+          rescheduledAt
+        ).catch((err) => console.error('Slack alert error:', err));
+      }
 
       console.log(`⏳ [Worker] Sender ${sender.email} rate limit / pacing hit. Deferring email ${emailId} for ${deferMs}ms`);
 
