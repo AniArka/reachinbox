@@ -28,17 +28,36 @@ export async function getOrCreateEtherealAccount(existingUser?: string, existing
     };
   }
 
-  // Automatically provision a live test account from Ethereal
-  console.log('📬 Auto-provisioning a fresh Ethereal SMTP test account...');
-  const testAccount = await nodemailer.createTestAccount();
-  console.log(`✅ Provisioned Ethereal account: ${testAccount.user}`);
+  if (env.EMAIL_DELIVERY_MODE === 'simulated') {
+    return {
+      user: `demo-sender-${Math.random().toString(36).substring(2, 8)}@reachinbox.demo`,
+      pass: 'simulated_credentials',
+      host: 'simulated.reachinbox.internal',
+      port: 0,
+    };
+  }
 
-  return {
-    user: testAccount.user,
-    pass: testAccount.pass,
-    host: testAccount.smtp.host,
-    port: testAccount.smtp.port,
-  };
+  // Automatically provision a live test account from Ethereal
+  try {
+    console.log('📬 Auto-provisioning a fresh Ethereal SMTP test account...');
+    const testAccount = await nodemailer.createTestAccount();
+    console.log(`✅ Provisioned Ethereal account: ${testAccount.user}`);
+
+    return {
+      user: testAccount.user,
+      pass: testAccount.pass,
+      host: testAccount.smtp.host,
+      port: testAccount.smtp.port,
+    };
+  } catch (error: any) {
+    console.warn('⚠️ Could not connect to Ethereal API to create test account, falling back to simulated sender credentials:', error?.message || error);
+    return {
+      user: `demo-sender-${Math.random().toString(36).substring(2, 8)}@reachinbox.demo`,
+      pass: 'simulated_credentials',
+      host: 'simulated.reachinbox.internal',
+      port: 0,
+    };
+  }
 }
 
 export function createEtherealTransporter(creds: EtherealCredentials) {

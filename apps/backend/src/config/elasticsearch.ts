@@ -7,7 +7,19 @@ export const esClient = new Client({
 
 export const EMAIL_INDEX = 'emails-index';
 
+let isEsAvailable = false;
+
+export function isElasticsearchAvailable(): boolean {
+  return isEsAvailable;
+}
+
 export async function initElasticsearch(): Promise<void> {
+  if (!env.ENABLE_ELASTICSEARCH) {
+    console.log('ℹ️ Elasticsearch is disabled (ENABLE_ELASTICSEARCH=false). Search will use PostgreSQL.');
+    isEsAvailable = false;
+    return;
+  }
+
   try {
     const exists = await esClient.indices.exists({ index: EMAIL_INDEX });
     if (!exists) {
@@ -40,7 +52,9 @@ export async function initElasticsearch(): Promise<void> {
     } else {
       console.log(`✅ Elasticsearch index '${EMAIL_INDEX}' already exists`);
     }
-  } catch (error) {
-    console.error('⚠️ Elasticsearch init warning (search may be unavailable):', error);
+    isEsAvailable = true;
+  } catch (error: any) {
+    isEsAvailable = false;
+    console.warn('⚠️ Elasticsearch init warning (falling back to PostgreSQL search):', error?.message || error);
   }
 }

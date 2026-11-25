@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import { env } from './config/env';
 import { prisma } from './config/db';
 import { redisClient } from './config/redis';
-import { esClient, EMAIL_INDEX } from './config/elasticsearch';
+import { esClient, EMAIL_INDEX, isElasticsearchAvailable } from './config/elasticsearch';
 
 import campaignRoutes from './routes/campaign.routes';
 import emailRoutes from './routes/email.routes';
@@ -77,15 +77,22 @@ app.get('/health/detailed', async (_req: Request, res: Response) => {
 
   // 3. Elasticsearch check
   const esStart = Date.now();
-  try {
-    const esPing = await esClient.ping();
+  if (isElasticsearchAvailable()) {
+    try {
+      const esPing = await esClient.ping();
+      health.elasticsearch = {
+        status: esPing ? 'healthy' : 'unhealthy',
+        latencyMs: Date.now() - esStart,
+      };
+    } catch (err: any) {
+      // Elasticsearch is derived index, mark degraded if down
+      health.elasticsearch = { status: 'degraded', error: err.message };
+    }
+  } else {
     health.elasticsearch = {
-      status: esPing ? 'healthy' : 'unhealthy',
-      latencyMs: Date.now() - esStart,
+      status: 'disabled',
+      error: 'Elasticsearch offline or disabled; PostgreSQL full-text/ILIKE search is active',
     };
-  } catch (err: any) {
-    // Elasticsearch is derived index, mark degraded if down
-    health.elasticsearch = { status: 'degraded', error: err.message };
   }
 
   const statusCode = overallHealthy ? 200 : 503;

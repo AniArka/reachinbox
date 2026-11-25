@@ -19,11 +19,12 @@ for (const key of new Set([...Object.keys(backendEnv), ...Object.keys(rootEnv)])
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().default('5000').transform((val) => parseInt(val, 10)),
-  FRONTEND_URL: z.string().default('http://localhost:5173'),
-  BACKEND_URL: z.string().default('http://localhost:5000'),
+  FRONTEND_URL: z.string().default('http://localhost:5173').transform((val) => val.replace(/\/+$/, '')),
+  BACKEND_URL: z.string().default('http://localhost:5000').transform((val) => val.replace(/\/+$/, '')),
 
   DATABASE_URL: z.string().default('postgresql://postgres:password@localhost:5432/reachinbox?schema=public'),
 
+  REDIS_URL: z.string().optional(),
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.string().default('6379').transform((val) => parseInt(val, 10)),
 
@@ -32,6 +33,7 @@ const envSchema = z.object({
   MAX_EMAILS_PER_HOUR_PER_SENDER: z.string().default('100').transform((val) => parseInt(val, 10)),
   EMAIL_MAX_RETRIES: z.string().default('3').transform((val) => parseInt(val, 10)),
 
+  EMAIL_DELIVERY_MODE: z.enum(['ethereal', 'simulated']).default('ethereal'),
   ETHEREAL_HOST: z.string().default('smtp.ethereal.email'),
   ETHEREAL_PORT: z.string().default('587').transform((val) => parseInt(val, 10)),
   ETHEREAL_USER: z.string().optional().default(''),
@@ -45,6 +47,11 @@ const envSchema = z.object({
   SLACK_CLIENT_SECRET: z.string().optional().default(''),
   SLACK_REDIRECT_URI: z.string().default('http://localhost:5000/api/slack/callback'),
 
+  ENABLE_ELASTICSEARCH: z
+    .string()
+    .optional()
+    .default('false')
+    .transform((val) => val === 'true' || val === '1'),
   ELASTICSEARCH_URL: z.string().default('http://localhost:9200'),
 
   SESSION_SECRET: z.string().default('reachinbox_default_session_secret_key_32_bytes_min'),
@@ -52,3 +59,13 @@ const envSchema = z.object({
 });
 
 export const env = envSchema.parse(process.env);
+
+// Production security audit check
+if (env.NODE_ENV === 'production') {
+  if (env.SESSION_SECRET === 'reachinbox_default_session_secret_key_32_bytes_min') {
+    console.warn('⚠️ [SECURITY WARNING] SESSION_SECRET is using the insecure default value in production! Please set a unique secret in your environment.');
+  }
+  if (env.TOKEN_ENCRYPTION_KEY === '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef') {
+    console.warn('⚠️ [SECURITY WARNING] TOKEN_ENCRYPTION_KEY is using the default encryption key in production! Please set a unique 64-character hex key.');
+  }
+}

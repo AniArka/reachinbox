@@ -1,10 +1,9 @@
 import { Worker, Job } from 'bullmq';
-import nodemailer from 'nodemailer';
 import { redisConfig } from '../config/redis';
 import { prisma } from '../config/db';
 import { env } from '../config/env';
 import { EMAIL_QUEUE_NAME, emailQueue, addEmailJob } from '../queues/email.queue';
-import { createEtherealTransporter } from '../integrations/smtp/ethereal';
+import { getEmailDeliveryAdapter } from '../integrations/smtp/delivery.adapter';
 import { decrypt } from '../utils/encryption';
 import { DistributedRateLimiter } from '../utils/rateLimiter';
 import { EmailIndexer } from '../integrations/elasticsearch/indexer';
@@ -143,34 +142,34 @@ export class EmailWorkerService {
       return;
     }
 
-    // 4. Send via Ethereal SMTP
+    // 4. Send via delivery adapter (Ethereal SMTP or Demo Simulated Mode)
     await prisma.emailEvent.create({
       data: {
         emailId,
         type: 'sending_started',
-        metadata: { sender: sender.email, attempt: email.attempts },
+        metadata: { sender: sender.email, attempt: email.attempts, deliveryMode: env.EMAIL_DELIVERY_MODE },
       },
     });
 
     try {
       const etherealPass = sender.etherealPass ? decrypt(sender.etherealPass) : env.ETHEREAL_PASS;
-      const transporter = createEtherealTransporter({
-        user: sender.etherealUser || sender.email,
-        pass: etherealPass,
-        host: env.ETHEREAL_HOST,
-        port: env.ETHEREAL_PORT,
-      });
+      const adapter = getEmailDeliveryAdapter();
 
-      const info = await transporter.sendMail({
-        from: `"${sender.email}" <${sender.email}>`,
+      const deliveryResult = await adapter.send({
+        from: sender.email,
         to: email.recipient,
         subject: email.subject,
         text: email.body,
         html: `<p>${email.body.replace(/\n/g, '<br/>')}</p>`,
+        senderEtherealUser: sender.etherealUser || sender.email,
+        senderEtherealPass: etherealPass,
       });
 
-      const previewUrl = nodemailer.getTestMessageUrl(info) || null;
-      console.log(`📬 [Worker] Sent email ${emailId} to ${email.recipient}! Preview URL: ${previewUrl}`);
+      if (deliveryResult.simulated) {
+        console.log(`🧪 [Worker - Simulated] Recorded simulated delivery for email ${emailId} to ${email.recipient} (${deliveryResult.messageId})`);
+      } else {
+        console.log(`📬 [Worker - SMTP] Sent email ${emailId} to ${email.recipient}! Preview URL: ${deliveryResult.previewUrl}`);
+      }
 
       // 5. Persist success state in PostgreSQL
       const sentAt = new Date();
@@ -179,7 +178,7 @@ export class EmailWorkerService {
         data: {
           status: EmailStatus.SENT,
           sentAt,
-          providerMessageId: info.messageId,
+          providerMessageId: deliveryResult.messageId,
           error: null,
         },
       });
@@ -187,10 +186,13 @@ export class EmailWorkerService {
       await prisma.emailEvent.create({
         data: {
           emailId,
-          type: 'email_sent',
+          type: deliveryResult.simulated ? 'email_simulated' : 'email_sent',
           metadata: {
-            messageId: info.messageId,
-            previewUrl,
+            messageId: deliveryResult.messageId,
+            previewUrl: deliveryResult.previewUrl,
+            simulated: deliveryResult.simulated,
+            provider: deliveryResult.provider,
+            ...(deliveryResult.metadata || {}),
           },
         },
       });
