@@ -23,8 +23,28 @@ app.use(helmet({
   contentSecurityPolicy: false, // Allows Bull Board and dev tools
 }));
 
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5000',
+  ...(env.FRONTEND_URL ? env.FRONTEND_URL.split(',').map((u) => u.trim().replace(/\/+$/, '')) : []),
+];
+
 app.use(cors({
-  origin: env.FRONTEND_URL,
+  origin: (origin, callback) => {
+    // Allow non-browser requests (Postman, curl, health-checks)
+    if (!origin) return callback(null, true);
+
+    const normalized = origin.replace(/\/+$/, '');
+    if (
+      allowedOrigins.includes(normalized) ||
+      normalized.endsWith('.vercel.app') ||
+      env.NODE_ENV !== 'production'
+    ) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
   credentials: true,
 }));
 
