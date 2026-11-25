@@ -12,7 +12,7 @@
     "prisma:seed": "ts-node src/prisma/seed.ts"
   },
   "dependencies": {
-    "@bull-board/api": "^5.18.0",
+    "@bull-board/api": "^9.14.0",
     "@bull-board/express": "^5.18.0",
     "@elastic/elasticsearch": "^8.13.0",
     "@prisma/client": "^5.14.0",
