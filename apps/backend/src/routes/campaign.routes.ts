@@ -8,11 +8,11 @@ const createCampaignSchema = z.object({
   body: z.object({
     subject: z.string().min(1, 'Subject is required').max(500),
     body: z.string().min(1, 'Email body is required'),
-    senderId: z.string().uuid('Invalid sender UUID'),
+    senderId: z.string().min(1, 'Sender ID is required'),
     recipients: z.array(z.string().email('Invalid email address')).min(1, 'At least one recipient is required'),
-    startAt: z.string().datetime({ message: 'startAt must be a valid ISO 8601 datetime' }),
-    delaySeconds: z.number().int().min(0).default(2),
-    hourlyLimit: z.number().int().positive().optional(),
+    startAt: z.string().refine((val) => !isNaN(Date.parse(val)), { message: 'Invalid startAt datetime format' }),
+    delaySeconds: z.coerce.number().int().min(0).default(2),
+    hourlyLimit: z.coerce.number().int().positive().optional(),
     idempotencyKey: z.string().optional(),
   }),
 });

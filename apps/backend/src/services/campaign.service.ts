@@ -9,12 +9,26 @@ export class CampaignService {
     data: CreateCampaignDTO & { idempotencyKey?: string }
   ) {
     // 1. Validate sender ownership
-    const sender = await prisma.sender.findFirst({
+    let sender = await prisma.sender.findFirst({
       where: { id: data.senderId, userId },
     });
 
     if (!sender) {
-      throw new Error('Sender not found or does not belong to the user');
+      sender = await prisma.sender.findFirst({
+        where: { userId },
+      });
+    }
+
+    if (!sender) {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      sender = await prisma.sender.create({
+        data: {
+          userId,
+          email: user?.email || 'sender@reachinbox.ai',
+          hourlyLimit: 100,
+          minDelayMs: 2000,
+        },
+      });
     }
 
     // 2. Validate and deduplicate recipients
