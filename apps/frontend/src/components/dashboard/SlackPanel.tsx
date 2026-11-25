@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SlackStatus } from '../../types';
 import { emailService } from '../../services/emailService';
+import { BACKEND_URL } from '../../services/api';
 import { MessageSquare, CheckCircle, AlertCircle, Bell, Trash2, ArrowUpRight } from 'lucide-react';
 
 interface SlackPanelProps {
@@ -117,7 +118,7 @@ export const SlackPanel: React.FC<SlackPanelProps> = ({ status, loading, onRefre
           </p>
 
           <a
-            href="http://localhost:5000/api/slack/connect"
+            href={`${BACKEND_URL}/api/slack/connect`}
             className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 shadow-sm hover:shadow transition-all"
           >
             <span>Connect Slack Workspace</span>

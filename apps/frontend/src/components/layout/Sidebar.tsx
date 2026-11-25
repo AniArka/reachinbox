@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, Stats } from '../../types';
 import { Clock, Send, Edit3, MessageSquare, ChevronDown, LogOut, ExternalLink } from 'lucide-react';
+import { BULL_BOARD_URL } from '../../services/api';
 
 interface SidebarProps {
   user: User | null;
@@ -66,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {showUserDropdown && (
           <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg p-1.5 z-30">
             <a
-              href="http://localhost:5000/admin/queues"
+              href={BULL_BOARD_URL}
               target="_blank"
               rel="noreferrer"
               className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-lg flex items-center justify-between"
