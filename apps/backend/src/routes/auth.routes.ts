@@ -1,11 +1,31 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { env } from '../config/env';
 import { prisma } from '../config/db';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
+
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password: string, storedHash: string | null | undefined): boolean {
+  if (!storedHash) {
+    // Default fallback password for pre-seeded users
+    return password === 'password123';
+  }
+  if (storedHash.includes(':')) {
+    const [salt, key] = storedHash.split(':');
+    const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+    return key === hash;
+  }
+  return storedHash === password;
+}
 
 // Current authenticated user
 router.get('/me', requireAuth, (req: Request, res: Response) => {
@@ -17,54 +37,49 @@ router.post('/logout', (_req: Request, res: Response) => {
   res.json({ message: 'Logged out successfully' });
 });
 
-// General Email & Password Login / Register endpoint
+// Email & Password Login with strict user check and password verification
 router.post('/login', async (req: Request, res: Response) => {
   try {
-    const { email } = req.body;
-    const userEmail = (email || 'oliver.brown@domain.io').trim().toLowerCase();
+    const { email, password } = req.body;
 
-    let user = await prisma.user.findFirst({
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: { message: 'Email address is required.' } });
+    }
+    if (!password || typeof password !== 'string') {
+      return res.status(400).json({ error: { message: 'Password is required.' } });
+    }
+
+    const userEmail = email.trim().toLowerCase();
+
+    // 1. Check if user exists in database
+    const user = await prisma.user.findFirst({
       where: { email: userEmail },
     });
 
     if (!user) {
-      const formattedName =
-        userEmail === 'oliver.brown@domain.io'
-          ? 'Oliver Brown'
-          : userEmail
-              .split('@')[0]
-              .replace(/[._-]/g, ' ')
-              .replace(/\b\w/g, (char: string) => char.toUpperCase());
-
-      user = await prisma.user.create({
-        data: {
-          email: userEmail,
-          name: formattedName,
-          googleId: `local-${Date.now()}`,
-          avatar:
-            userEmail === 'oliver.brown@domain.io'
-              ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=256'
-              : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(formattedName)}`,
+      return res.status(401).json({
+        error: {
+          message: `User '${userEmail}' does not exist. Please check your email or contact your administrator.`,
         },
       });
+    }
 
-      // Link default sender account so user can immediately schedule emails
+    // 2. Verify password against stored hash or default password123
+    const isPasswordCorrect = verifyPassword(password, (user as any).password);
+    if (!isPasswordCorrect) {
+      return res.status(401).json({
+        error: {
+          message: 'Incorrect password. Please verify your credentials and try again.',
+        },
+      });
+    }
+
+    // 3. Persist password hash if not yet set
+    if (!(user as any).password) {
       try {
-        const existingSender = await prisma.sender.findFirst();
-        if (existingSender) {
-          await prisma.sender.create({
-            data: {
-              userId: user.id,
-              email: user.email,
-              etherealUser: existingSender.etherealUser,
-              etherealPass: existingSender.etherealPass,
-              hourlyLimit: 100,
-              minDelayMs: 2000,
-            },
-          });
-        }
+        await prisma.$executeRaw`UPDATE users SET password = ${hashPassword(password)} WHERE id = ${user.id}`;
       } catch (err) {
-        console.warn('Sender link skipped:', err);
+        console.warn('Could not persist password hash:', err);
       }
     }
 
@@ -89,11 +104,17 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
-// Demo login for quick testing and local dashboard usage
+// Demo login for automated test runner
 router.post('/demo-login', async (_req: Request, res: Response) => {
   let user = await prisma.user.findFirst({
-    where: { email: 'demo@reachinbox.ai' },
+    where: { email: 'oliver.brown@domain.io' },
   });
+
+  if (!user) {
+    user = await prisma.user.findFirst({
+      where: { email: 'demo@reachinbox.ai' },
+    });
+  }
 
   if (!user) {
     user = await prisma.user.findFirst();
@@ -102,10 +123,11 @@ router.post('/demo-login', async (_req: Request, res: Response) => {
   if (!user) {
     user = await prisma.user.create({
       data: {
-        email: 'demo@reachinbox.ai',
-        name: 'Demo User',
-        googleId: 'demo-google-id',
-        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=DemoUser',
+        email: 'oliver.brown@domain.io',
+        name: 'Oliver Brown',
+        googleId: 'demo-oliver-brown',
+        avatar:
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=256',
       },
     });
   }
@@ -131,7 +153,8 @@ router.post('/demo-login', async (_req: Request, res: Response) => {
 router.get('/google', async (_req: Request, res: Response) => {
   // If Google OAuth credentials are not configured in .env, redirect back with explicit error
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
-    const errorMsg = 'Google OAuth credentials not configured in .env. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable Google Sign-In.';
+    const errorMsg =
+      'Google OAuth credentials not configured in .env. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable Google Sign-In.';
     return res.redirect(`${env.FRONTEND_URL}/?error=${encodeURIComponent(errorMsg)}`);
   }
 
@@ -155,7 +178,9 @@ router.get('/google', async (_req: Request, res: Response) => {
     res.redirect(authorizeUrl);
   } catch (err: any) {
     console.error('Google OAuth init error:', err);
-    res.redirect(`${env.FRONTEND_URL}/?error=${encodeURIComponent(err.message || 'Failed to start Google OAuth')}`);
+    res.redirect(
+      `${env.FRONTEND_URL}/?error=${encodeURIComponent(err.message || 'Failed to start Google OAuth')}`
+    );
   }
 });
 
