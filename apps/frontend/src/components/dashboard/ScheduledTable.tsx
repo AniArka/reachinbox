@@ -14,6 +14,8 @@ interface ScheduledTableProps {
     total: number;
   };
   onPageChange: (newPage: number) => void;
+  starredIds?: Set<string>;
+  onToggleStar?: (emailId: string) => void;
 }
 
 export const ScheduledTable: React.FC<ScheduledTableProps> = ({
@@ -23,6 +25,8 @@ export const ScheduledTable: React.FC<ScheduledTableProps> = ({
   onCancelCampaign,
   pagination,
   onPageChange,
+  starredIds,
+  onToggleStar,
 }) => {
   const formatTimeBadge = (dateString: string) => {
     const d = new Date(dateString);
@@ -117,10 +121,21 @@ export const ScheduledTable: React.FC<ScheduledTableProps> = ({
                   </button>
                 )}
                 <button
-                  onClick={(e) => e.stopPropagation()}
-                  className="p-1 text-gray-300 hover:text-amber-400 transition-colors"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleStar?.(email.id);
+                  }}
+                  className="p-1 transition-colors"
+                  title={starredIds?.has(email.id) ? 'Unstar' : 'Star'}
                 >
-                  <Star className="w-4 h-4" />
+                  <Star
+                    className={`w-4 h-4 transition-colors ${
+                      starredIds?.has(email.id)
+                        ? 'fill-amber-400 text-amber-400'
+                        : 'text-gray-300 hover:text-amber-400'
+                    }`}
+                  />
                 </button>
               </div>
             </div>
