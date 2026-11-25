@@ -23,6 +23,8 @@ import {
   Quote,
   Strikethrough,
   AlertCircle,
+  Zap,
+  Check,
 } from 'lucide-react';
 
 interface ComposeModalProps {
@@ -52,13 +54,27 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Send Later Popover State
-  const [isSendLaterOpen, setIsSendLaterOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Send Mode: 'later' | 'now'
+  const [sendMode, setSendMode] = useState<'later' | 'now'>('later');
+  // Send Options Dropdown Menu State
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // File Attachments State
   const [attachments, setAttachments] = useState<{ id: string; name: string; size: string }[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleFileAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -97,8 +113,6 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   }, [senders]);
 
   if (!isOpen) return null;
-
-  const currentSender = senders.find((s) => s.id === senderId) || senders[0];
 
   // Add recipient chip on Enter, comma, or blur
   const handleAddRecipient = (val: string) => {
@@ -148,7 +162,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     });
   };
 
-  // Preset Date Handlers for Send Later Popover
+  // Preset Date Handlers for Send Later
   const applyPreset = (preset: 'tomorrow' | 'tomorrow-10' | 'tomorrow-11' | 'tomorrow-15') => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
@@ -167,7 +181,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     setStartAt(localIso);
   };
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (mode: 'later' | 'now' = sendMode, e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
 
@@ -195,12 +209,21 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
         finalBody = `${finalBody}\n\n[Attached Files]:\n${attachList}`;
       }
 
+      // If 'now', start immediately; if 'later', parse startAt or default to 5 mins from now
+      let effectiveStartAt: string;
+      if (mode === 'now') {
+        effectiveStartAt = new Date().toISOString();
+      } else {
+        const parsed = startAt ? new Date(startAt) : new Date(Date.now() + 5 * 60 * 1000);
+        effectiveStartAt = isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+      }
+
       await emailService.createCampaign({
         subject: subject || '(No Subject)',
         body: finalBody,
         senderId: effectiveSenderId,
         recipients,
-        startAt: new Date(startAt).toISOString(),
+        startAt: effectiveStartAt,
         delaySeconds,
         hourlyLimit,
       });
@@ -219,6 +242,15 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+      {/* Hidden File Input for Attachments */}
+      <input
+        type="file"
+        ref={attachmentInputRef}
+        onChange={handleFileAttachment}
+        multiple
+        className="hidden"
+      />
+
       {/* Compose Window Container (Figma nodes 59-5703, 59-5998, 91-23) */}
       <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 max-w-3xl w-full h-[85vh] max-h-[780px] flex flex-col overflow-hidden relative">
         {/* Top Header Bar */}
@@ -235,131 +267,185 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
           </div>
 
           <div className="flex items-center space-x-3 relative">
-            {/* Hidden Attachment File Input */}
-            <input
-              type="file"
-              ref={attachmentInputRef}
-              onChange={handleFileAttachment}
-              multiple
-              className="hidden"
-            />
+            {/* Paperclip / Attach File Action Button */}
             <button
               type="button"
               onClick={() => attachmentInputRef.current?.click()}
-              className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors relative"
+              className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors relative"
               title="Attach File"
             >
-              <Paperclip className="w-4 h-4" />
+              <Paperclip className="w-3.5 h-3.5 text-gray-600" />
+              <span>Attach</span>
               {attachments.length > 0 && (
-                <span className="absolute top-1 right-1 w-2 h-2 bg-[#00A854] rounded-full ring-2 ring-white"></span>
+                <span className="ml-1 px-1.5 py-0.2 bg-[#00A854] text-white text-[10px] rounded-full font-bold">
+                  {attachments.length}
+                </span>
               )}
             </button>
 
-            <button
-              type="button"
-              onClick={() => setIsSendLaterOpen(!isSendLaterOpen)}
-              className={`p-2 rounded-full transition-colors ${
-                isSendLaterOpen
-                  ? 'bg-green-50 text-[#00A854]'
-                  : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
-              }`}
-              title="Schedule Options"
-            >
-              <Clock className="w-4 h-4" />
-            </button>
+            {/* Split Button: Send Later / Send Now with Dropdown Chevron */}
+            <div className="relative inline-flex items-center rounded-full border border-[#00A854] bg-white shadow-xs" ref={dropdownRef}>
+              {/* Primary Action Button */}
+              <button
+                type="button"
+                onClick={() => handleSubmit(sendMode)}
+                disabled={loading || recipients.length === 0}
+                className={`flex items-center space-x-1.5 pl-4 pr-3 py-2 text-sm font-medium rounded-l-full transition-colors ${
+                  sendMode === 'now'
+                    ? 'bg-[#00A854] text-white hover:bg-[#009249]'
+                    : 'text-[#00A854] hover:bg-green-50/70'
+                } disabled:opacity-50`}
+              >
+                {sendMode === 'now' ? (
+                  <>
+                    <Zap className="w-3.5 h-3.5 fill-current" />
+                    <span>{loading ? 'Sending...' : 'Send Now'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>{loading ? 'Scheduling...' : 'Send Later'}</span>
+                  </>
+                )}
+              </button>
 
-            {/* Outlined Green Pill: Send Later / Send */}
-            <button
-              onClick={() => handleSubmit()}
-              disabled={loading || recipients.length === 0}
-              className="border border-[#00A854] text-[#00A854] bg-white hover:bg-green-50/70 rounded-full px-5 py-2 text-sm font-medium transition-colors flex items-center space-x-2 disabled:opacity-50"
-            >
-              <span>{loading ? 'Scheduling...' : 'Send Later'}</span>
-              <ChevronDown
-                className="w-3.5 h-3.5 cursor-pointer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsSendLaterOpen(!isSendLaterOpen);
-                }}
-              />
-            </button>
+              {/* Divider */}
+              <div className={`h-5 w-[1px] ${sendMode === 'now' ? 'bg-white/40' : 'bg-[#00A854]/30'}`} />
 
-            {/* Send Later Popover Floating Card (Figma node 59-5703) */}
-            {isSendLaterOpen && (
-              <div className="absolute right-0 top-12 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 p-5 z-40 animate-in fade-in zoom-in-95">
-                <h4 className="text-sm font-bold text-gray-900 mb-3">Send Later</h4>
+              {/* Dropdown Toggle Chevron */}
+              <button
+                type="button"
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className={`px-2.5 py-2 rounded-r-full transition-colors ${
+                  sendMode === 'now'
+                    ? 'bg-[#00A854] text-white hover:bg-[#009249]'
+                    : 'text-[#00A854] hover:bg-green-50/70'
+                } ${isDropdownOpen ? 'bg-green-100/60' : ''}`}
+                title="Toggle Send Options"
+              >
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-                <div className="mb-4">
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5 flex items-center space-x-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-gray-500" />
-                    <span>Pick date &amp; time</span>
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={startAt}
-                    onChange={(e) => setStartAt(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#00A854] outline-none"
-                  />
+              {/* Dropdown Menu (Figma popover) */}
+              {isDropdownOpen && (
+                <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 z-50 animate-in fade-in zoom-in-95">
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    Send Options
+                  </div>
+
+                  {/* Option 1: Send Later */}
+                  <div
+                    onClick={() => {
+                      setSendMode('later');
+                    }}
+                    className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-colors ${
+                      sendMode === 'later'
+                        ? 'bg-green-50 text-[#00A854] font-medium'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-100 text-[#00A854] flex items-center justify-center">
+                        <Clock className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold">Send Later</p>
+                        <p className="text-[11px] text-gray-500">Schedule delivery for a specific time</p>
+                      </div>
+                    </div>
+                    {sendMode === 'later' && <Check className="w-4 h-4 text-[#00A854]" />}
+                  </div>
+
+                  {/* Option 2: Send Now */}
+                  <div
+                    onClick={() => {
+                      setSendMode('now');
+                      setIsDropdownOpen(false);
+                    }}
+                    className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-colors mt-1.5 ${
+                      sendMode === 'now'
+                        ? 'bg-green-50 text-[#00A854] font-medium'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+                        <Zap className="w-4 h-4 fill-current" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold">Send Now</p>
+                        <p className="text-[11px] text-gray-500">Send immediately to all recipients</p>
+                      </div>
+                    </div>
+                    {sendMode === 'now' && <Check className="w-4 h-4 text-[#00A854]" />}
+                  </div>
+
+                  {/* If Send Later is selected, show Date/Time Picker and Presets */}
+                  {sendMode === 'later' && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center space-x-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-gray-500" />
+                        <span>Pick date &amp; time</span>
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={startAt}
+                        onChange={(e) => setStartAt(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#00A854] outline-none mb-3"
+                      />
+
+                      <div className="space-y-1 mb-2">
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                          Quick Presets
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => applyPreset('tomorrow')}
+                          className="w-full text-left px-2.5 py-1.5 text-xs text-gray-700 hover:bg-[#E8F5E9] hover:text-[#00A854] rounded-lg transition-colors flex items-center justify-between"
+                        >
+                          <span>Tomorrow morning</span>
+                          <span className="text-[11px] text-gray-400">9:00 AM</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => applyPreset('tomorrow-10')}
+                          className="w-full text-left px-2.5 py-1.5 text-xs text-gray-700 hover:bg-[#E8F5E9] hover:text-[#00A854] rounded-lg transition-colors flex items-center justify-between"
+                        >
+                          <span>Tomorrow mid-morning</span>
+                          <span className="text-[11px] text-gray-400">10:00 AM</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => applyPreset('tomorrow-15')}
+                          className="w-full text-left px-2.5 py-1.5 text-xs text-gray-700 hover:bg-[#E8F5E9] hover:text-[#00A854] rounded-lg transition-colors flex items-center justify-between"
+                        >
+                          <span>Tomorrow afternoon</span>
+                          <span className="text-[11px] text-gray-400">3:00 PM</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actions footer */}
+                  <div className="flex items-center justify-between pt-2.5 border-t border-gray-100 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsDropdownOpen(false)}
+                      className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 rounded-lg"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsDropdownOpen(false)}
+                      className="px-4 py-1.5 text-xs font-semibold text-white bg-[#00A854] hover:bg-[#009249] rounded-lg transition-colors"
+                    >
+                      Done
+                    </button>
+                  </div>
                 </div>
-
-                {/* Quick Presets */}
-                <div className="space-y-1.5 mb-5">
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                    Presets
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => applyPreset('tomorrow')}
-                    className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-[#E8F5E9] hover:text-[#00A854] rounded-lg transition-colors flex items-center justify-between"
-                  >
-                    <span>Tomorrow morning</span>
-                    <span className="text-[11px] text-gray-400">9:00 AM</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyPreset('tomorrow-10')}
-                    className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-[#E8F5E9] hover:text-[#00A854] rounded-lg transition-colors flex items-center justify-between"
-                  >
-                    <span>Tomorrow</span>
-                    <span className="text-[11px] text-gray-400">10:00 AM</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyPreset('tomorrow-11')}
-                    className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-[#E8F5E9] hover:text-[#00A854] rounded-lg transition-colors flex items-center justify-between"
-                  >
-                    <span>Tomorrow</span>
-                    <span className="text-[11px] text-gray-400">11:00 AM</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyPreset('tomorrow-15')}
-                    className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-[#E8F5E9] hover:text-[#00A854] rounded-lg transition-colors flex items-center justify-between"
-                  >
-                    <span>Tomorrow</span>
-                    <span className="text-[11px] text-gray-400">3:00 PM</span>
-                  </button>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center justify-end space-x-2 pt-3 border-t border-gray-100">
-                  <button
-                    type="button"
-                    onClick={() => setIsSendLaterOpen(false)}
-                    className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsSendLaterOpen(false)}
-                    className="px-4 py-1.5 text-xs font-semibold text-white bg-[#00A854] hover:bg-[#009249] rounded-lg transition-colors"
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
@@ -540,6 +626,18 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
               <button type="button" className="hover:text-gray-900 transition-colors">
                 <Strikethrough className="w-3.5 h-3.5" />
               </button>
+
+              {/* Toolbar Attach File Button */}
+              <span className="text-gray-200 text-xs">|</span>
+              <button
+                type="button"
+                onClick={() => attachmentInputRef.current?.click()}
+                className="hover:text-[#00A854] text-xs font-semibold px-1.5 py-0.5 flex items-center space-x-1 text-gray-600 hover:bg-green-50 rounded transition-colors"
+                title="Attach files to email"
+              >
+                <Paperclip className="w-3.5 h-3.5 text-[#00A854]" />
+                <span>Attach</span>
+              </button>
             </div>
 
             {/* Editor Textarea */}
@@ -550,7 +648,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
               className="w-full bg-transparent border-0 outline-none resize-none text-sm text-gray-800 placeholder-gray-400 mt-4 flex-1"
             ></textarea>
 
-            {/* Attached Files Preview */}
+            {/* Attached Files Preview Tray */}
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-200/80 mt-auto shrink-0">
                 {attachments.map((att) => (
@@ -571,6 +669,14 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                     </button>
                   </div>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => attachmentInputRef.current?.click()}
+                  className="flex items-center space-x-1 px-2.5 py-1 text-xs text-[#00A854] hover:bg-green-50 rounded-xl border border-dashed border-[#00A854]/40 transition-colors"
+                >
+                  <Paperclip className="w-3 h-3" />
+                  <span>+ Add more</span>
+                </button>
               </div>
             )}
           </div>
