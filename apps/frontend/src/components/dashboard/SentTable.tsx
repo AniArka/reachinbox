@@ -1,6 +1,7 @@
 import React from 'react';
 import { Email } from '../../types';
 import { Star, CheckCircle, ChevronLeft, ChevronRight, Mail } from 'lucide-react';
+import { cleanEmailSnippet } from '../../utils/attachmentUtils';
 
 interface SentTableProps {
   emails: Email[];
@@ -49,7 +50,7 @@ export const SentTable: React.FC<SentTableProps> = ({
       {/* Gmail-style Email Rows (Figma node 79-2) */}
       <div className="divide-y divide-gray-100 flex-1">
         {emails.map((email) => {
-          const cleanSnippet = email.body.replace(/<[^>]*>?/gm, '').trim();
+          const cleanSnippet = cleanEmailSnippet(email.body);
 
           return (
             <div

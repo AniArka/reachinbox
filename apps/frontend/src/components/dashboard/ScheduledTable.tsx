@@ -1,6 +1,7 @@
 import React from 'react';
 import { Email } from '../../types';
 import { Clock, Star, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { cleanEmailSnippet } from '../../utils/attachmentUtils';
 
 interface ScheduledTableProps {
   emails: Email[];
@@ -63,7 +64,7 @@ export const ScheduledTable: React.FC<ScheduledTableProps> = ({
       {/* Gmail-style Email Rows (Figma node 64-2) */}
       <div className="divide-y divide-gray-100 flex-1">
         {emails.map((email) => {
-          const cleanSnippet = email.body.replace(/<[^>]*>?/gm, '').trim();
+          const cleanSnippet = cleanEmailSnippet(email.body);
 
           return (
             <div
