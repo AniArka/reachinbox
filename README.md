@@ -3,8 +3,13 @@
 A production-grade distributed email job scheduler service and interactive dashboard built with **TypeScript**, **Express**, **PostgreSQL**, **Redis**, **BullMQ**, **Ethereal SMTP**, **Elasticsearch**, **Slack OAuth 2.0**, **Google OAuth 2.0**, and **React**.
 
 ---
+### Demo Video
 
-### 🌐 Live Production Deployments ($0 Free-Tier Architecture)
+
+https://github.com/user-attachments/assets/27475896-c0ea-428f-a8d7-eadb5e698810
+
+---
+### 🌐 Live Production Deployments
 
 | Component | Provider | Live URL |
 | :--- | :--- | :--- |
