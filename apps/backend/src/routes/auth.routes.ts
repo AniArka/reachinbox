@@ -129,76 +129,41 @@ router.post('/demo-login', async (_req: Request, res: Response) => {
 
 // Google OAuth start
 router.get('/google', async (_req: Request, res: Response) => {
-  // If Google OAuth credentials are not configured in .env, seamlessly log in with Google profile
+  // If Google OAuth credentials are not configured in .env, redirect back with explicit error
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
-    let googleUser = await prisma.user.findFirst({
-      where: { email: 'oliver.brown@domain.io' },
-    });
-
-    if (!googleUser) {
-      googleUser = await prisma.user.create({
-        data: {
-          email: 'oliver.brown@domain.io',
-          name: 'Oliver Brown',
-          googleId: 'google-oliver-brown-demo',
-          avatar:
-            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=256',
-        },
-      });
-
-      // Link default sender
-      try {
-        const existingSender = await prisma.sender.findFirst();
-        if (existingSender) {
-          await prisma.sender.create({
-            data: {
-              userId: googleUser.id,
-              email: googleUser.email,
-              etherealUser: existingSender.etherealUser,
-              etherealPass: existingSender.etherealPass,
-              hourlyLimit: 100,
-              minDelayMs: 2000,
-            },
-          });
-        }
-      } catch (e) {
-        console.warn('Sender link skipped:', e);
-      }
-    }
-
-    const token = jwt.sign(
-      { userId: googleUser.id, email: googleUser.email, name: googleUser.name },
-      env.SESSION_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    return res.redirect(`${env.FRONTEND_URL}/login?token=${token}&google=true`);
+    const errorMsg = 'Google OAuth credentials not configured in .env. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable Google Sign-In.';
+    return res.redirect(`${env.FRONTEND_URL}/?error=${encodeURIComponent(errorMsg)}`);
   }
 
   // Real Google Cloud OAuth Redirect
-  const client = new OAuth2Client(
-    env.GOOGLE_CLIENT_ID,
-    env.GOOGLE_CLIENT_SECRET,
-    env.GOOGLE_CALLBACK_URL
-  );
+  try {
+    const client = new OAuth2Client(
+      env.GOOGLE_CLIENT_ID,
+      env.GOOGLE_CLIENT_SECRET,
+      env.GOOGLE_CALLBACK_URL
+    );
 
-  const authorizeUrl = client.generateAuthUrl({
-    access_type: 'offline',
-    scope: [
-      'https://www.googleapis.com/auth/userinfo.profile',
-      'https://www.googleapis.com/auth/userinfo.email',
-    ],
-    prompt: 'consent',
-  });
+    const authorizeUrl = client.generateAuthUrl({
+      access_type: 'offline',
+      scope: [
+        'https://www.googleapis.com/auth/userinfo.profile',
+        'https://www.googleapis.com/auth/userinfo.email',
+      ],
+      prompt: 'consent',
+    });
 
-  res.redirect(authorizeUrl);
+    res.redirect(authorizeUrl);
+  } catch (err: any) {
+    console.error('Google OAuth init error:', err);
+    res.redirect(`${env.FRONTEND_URL}/?error=${encodeURIComponent(err.message || 'Failed to start Google OAuth')}`);
+  }
 });
 
 // Google OAuth callback
 router.get('/google/callback', async (req: Request, res: Response) => {
   const code = req.query.code as string;
   if (!code) {
-    return res.redirect(`${env.FRONTEND_URL}/login?error=missing_authorization_code`);
+    return res.redirect(`${env.FRONTEND_URL}/?error=missing_authorization_code`);
   }
 
   try {
@@ -272,10 +237,10 @@ router.get('/google/callback', async (req: Request, res: Response) => {
       { expiresIn: '7d' }
     );
 
-    res.redirect(`${env.FRONTEND_URL}/login?token=${token}`);
+    res.redirect(`${env.FRONTEND_URL}/?token=${token}`);
   } catch (err: any) {
     console.error('Google OAuth callback error:', err);
-    res.redirect(`${env.FRONTEND_URL}/login?error=${encodeURIComponent(err.message || 'OAuth error')}`);
+    res.redirect(`${env.FRONTEND_URL}/?error=${encodeURIComponent(err.message || 'OAuth error')}`);
   }
 });
 

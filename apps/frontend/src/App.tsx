@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { User } from './types';
 import { authService } from './services/authService';
 import { Login } from './pages/Login';
@@ -8,7 +8,13 @@ export const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async (preloadedUser?: User) => {
+    if (preloadedUser) {
+      setUser(preloadedUser);
+      setLoading(false);
+      return;
+    }
+
     // Check if token passed in URL (e.g. from OAuth redirect)
     const urlParams = new URLSearchParams(window.location.search);
     const tokenParam = urlParams.get('token');
@@ -17,20 +23,28 @@ export const App: React.FC = () => {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
+    const currentToken = localStorage.getItem('reachinbox_token');
+    if (!currentToken) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const currentUser = await authService.getMe();
       setUser(currentUser);
     } catch {
+      localStorage.removeItem('reachinbox_token');
       setUser(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     checkAuth();
-  }, []);
+  }, [checkAuth]);
 
   const handleLogout = async () => {
     await authService.logout();
@@ -39,17 +53,17 @@ export const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
-          <p className="mt-4 text-sm text-gray-500 font-medium">Connecting to ReachInbox Scheduler...</p>
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-2 border-[#00A854] border-t-transparent"></div>
+          <p className="mt-3 text-xs text-gray-500 font-medium">Loading ReachInbox...</p>
         </div>
       </div>
     );
   }
 
   if (!user) {
-    return <Login onLoginSuccess={checkAuth} />;
+    return <Login onLoginSuccess={(u) => checkAuth(u)} />;
   }
 
   return <Dashboard user={user} onLogout={handleLogout} />;

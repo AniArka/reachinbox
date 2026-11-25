@@ -1,26 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { authService } from '../services/authService';
 import { Eye, EyeOff } from 'lucide-react';
+import { User } from '../types';
 
 interface LoginProps {
-  onLoginSuccess: () => void;
+  onLoginSuccess: (user?: User) => void;
 }
 
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('oliver.brown@domain.io');
-  const [password, setPassword] = useState('••••••••');
+  const [password, setPassword] = useState('password123');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Handle OAuth callback token in URL query
+  // Handle OAuth callback token or error in URL search parameters
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
     const err = params.get('error');
+    const token = params.get('token');
 
     if (err) {
-      setError(`OAuth failed: ${err}`);
+      setError(decodeURIComponent(err));
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (token) {
       localStorage.setItem('reachinbox_token', token);
@@ -34,8 +35,8 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     try {
       setLoading(true);
       setError(null);
-      await authService.login(email, password);
-      onLoginSuccess();
+      const res = await authService.login(email, password);
+      onLoginSuccess(res.user);
     } catch (err: any) {
       const msg =
         err.response?.data?.error?.message ||
@@ -59,7 +60,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         <h1 className="text-2xl font-bold text-gray-900 text-center mb-6">Login</h1>
 
         {error && (
-          <div className="mb-5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 leading-relaxed">
+          <div className="mb-5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 leading-relaxed font-medium">
             {error}
           </div>
         )}
@@ -126,14 +127,19 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="Enter password"
                 className="w-full bg-[#F3F4F6] border-0 rounded-xl pl-4 pr-11 py-3 text-sm text-gray-900 placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-[#00A854] outline-none transition-all"
                 required
               />
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-md"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowPassword(!showPassword);
+                }}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-colors p-1 rounded-md cursor-pointer"
+                tabIndex={-1}
                 title={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? (
