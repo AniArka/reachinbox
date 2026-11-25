@@ -52,16 +52,40 @@ router.post('/login', async (req: Request, res: Response) => {
     const userEmail = email.trim().toLowerCase();
 
     // 1. Check if user exists in database
-    const user = await prisma.user.findFirst({
+    let user = await prisma.user.findFirst({
       where: { email: userEmail },
     });
 
     if (!user) {
-      return res.status(401).json({
-        error: {
-          message: `User '${userEmail}' does not exist. Please check your email or contact your administrator.`,
-        },
-      });
+      if (userEmail === 'oliver.brown@domain.io' || userEmail === 'demo@reachinbox.ai') {
+        user = await prisma.user.create({
+          data: {
+            email: userEmail,
+            name: userEmail === 'oliver.brown@domain.io' ? 'Oliver Brown' : 'Demo User',
+            password: hashPassword('password123'),
+            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=256',
+          },
+        });
+
+        try {
+          await prisma.sender.create({
+            data: {
+              userId: user.id,
+              email: user.email,
+              hourlyLimit: 100,
+              minDelayMs: 2000,
+            },
+          });
+        } catch (err) {
+          console.warn('Auto-provision sender skipped:', err);
+        }
+      } else {
+        return res.status(401).json({
+          error: {
+            message: `User '${userEmail}' does not exist. Please check your email or contact your administrator.`,
+          },
+        });
+      }
     }
 
     // 2. Verify password against stored hash or default password123

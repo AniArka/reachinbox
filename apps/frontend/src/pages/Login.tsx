@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { authService } from '../services/authService';
+import { API_BASE_URL } from '../services/api';
 import { Eye, EyeOff } from 'lucide-react';
 import { User } from '../types';
 
@@ -41,7 +42,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       const msg =
         err.response?.data?.error?.message ||
         (err.message?.includes('Network Error')
-          ? 'Cannot connect to backend API at http://localhost:5000. Please ensure the backend is running (npm run dev:backend).'
+          ? `Cannot connect to backend API at ${API_BASE_URL}. Please ensure the backend is running.`
           : err.message || 'Login failed');
       setError(msg);
     } finally {
@@ -50,7 +51,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = 'http://localhost:5000/api/auth/google';
+    window.location.href = `${API_BASE_URL}/auth/google`;
   };
 
   return (
