@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Email } from '../../types';
 import {
   ArrowLeft,
@@ -12,6 +12,8 @@ import {
   CheckCircle2,
   ChevronDown,
   FileText,
+  Eye,
+  X,
 } from 'lucide-react';
 import { parseEmailBodyAndAttachments, EmailAttachment } from '../../utils/attachmentUtils';
 
@@ -19,6 +21,24 @@ interface EmailDetailViewProps {
   email: Email;
   onBack: () => void;
   onCancelCampaign?: (campaignId: string) => void;
+}
+
+function isImage(name: string, type?: string): boolean {
+  if (type && type.startsWith('image/')) return true;
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext);
+}
+
+function isPdf(name: string, type?: string): boolean {
+  if (type && type.includes('pdf')) return true;
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  return ext === 'pdf';
+}
+
+function isText(name: string, type?: string): boolean {
+  if (type && (type.startsWith('text/') || type.includes('json') || type.includes('csv'))) return true;
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  return ['txt', 'csv', 'json', 'js', 'ts', 'html', 'css', 'md', 'log'].includes(ext);
 }
 
 function getFileBadgeLabel(name: string, type?: string): string {
@@ -45,6 +65,42 @@ function getFileBadgeColor(name: string, type?: string): string {
   return 'bg-gray-100 text-gray-600';
 }
 
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  try {
+    const parts = dataUrl.split(',');
+    if (parts.length < 2) return null;
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+    if (parts[0].includes(';base64')) {
+      const byteCharacters = atob(parts[1]);
+      const byteNumbers = new Uint8Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      return new Blob([byteNumbers.buffer as ArrayBuffer], { type: mime });
+    } else {
+      return new Blob([decodeURIComponent(parts[1])], { type: mime });
+    }
+  } catch (e) {
+    return null;
+  }
+}
+
+function getTextContent(att: EmailAttachment): string {
+  if (!att.dataUrl) return `Attachment: ${att.name} (${att.size})`;
+  try {
+    if (att.dataUrl.includes(';base64,')) {
+      const base64 = att.dataUrl.split(';base64,')[1];
+      return decodeURIComponent(escape(atob(base64)));
+    } else if (att.dataUrl.includes(',')) {
+      return decodeURIComponent(att.dataUrl.split(',')[1]);
+    }
+  } catch (e) {
+    // fallback
+  }
+  return `File: ${att.name}\nSize: ${att.size}\nProcessed via ReachInbox Outbox.`;
+}
+
 export const EmailDetailView: React.FC<EmailDetailViewProps> = ({
   email,
   onBack,
@@ -52,6 +108,19 @@ export const EmailDetailView: React.FC<EmailDetailViewProps> = ({
 }) => {
   const senderEmail = email.sender?.email || 'oliver.brown@domain.io';
   const senderName = 'Oliver Brown';
+
+  const [previewAttachment, setPreviewAttachment] = useState<EmailAttachment | null>(null);
+
+  // Close modal on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPreviewAttachment(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const formattedDate = new Date(email.scheduledAt).toLocaleString('en-US', {
     month: 'short',
@@ -63,14 +132,37 @@ export const EmailDetailView: React.FC<EmailDetailViewProps> = ({
 
   const { cleanBody, attachments } = parseEmailBodyAndAttachments(email.body);
 
+  // Create an object URL for PDF preview to ensure smooth iframe rendering
+  const previewBlobUrl = useMemo(() => {
+    if (previewAttachment?.dataUrl && isPdf(previewAttachment.name, previewAttachment.type)) {
+      const blob = dataUrlToBlob(previewAttachment.dataUrl);
+      if (blob) {
+        return URL.createObjectURL(blob);
+      }
+    }
+    return null;
+  }, [previewAttachment]);
+
+  // Clean up object URL when preview closes
+  useEffect(() => {
+    return () => {
+      if (previewBlobUrl) {
+        URL.revokeObjectURL(previewBlobUrl);
+      }
+    };
+  }, [previewBlobUrl]);
+
   const handleDownloadAttachment = (att: EmailAttachment) => {
     if (att.dataUrl) {
+      const blob = dataUrlToBlob(att.dataUrl);
+      const url = blob ? URL.createObjectURL(blob) : att.dataUrl;
       const link = document.createElement('a');
-      link.href = att.dataUrl;
+      link.href = url;
       link.download = att.name;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      if (blob) URL.revokeObjectURL(url);
     } else {
       const content = `Attachment: ${att.name}\nSize: ${att.size}\nProcessed via ReachInbox Outbox.\nDelivered to: ${email.recipient}\nDate: ${new Date().toISOString()}`;
       const blob = new Blob([content], { type: att.type || 'text/plain;charset=utf-8' });
@@ -85,23 +177,17 @@ export const EmailDetailView: React.FC<EmailDetailViewProps> = ({
     }
   };
 
-  const handleViewAttachment = (att: EmailAttachment) => {
+  const handleOpenInNewTab = (att: EmailAttachment) => {
     if (att.dataUrl) {
-      const win = window.open();
-      if (win) {
-        if (att.type?.startsWith('image/')) {
-          win.document.write(
-            `<!DOCTYPE html><html><head><title>${att.name}</title></head><body style="margin:0;background:#18181b;display:flex;align-items:center;justify-content:center;height:100vh;"><img src="${att.dataUrl}" style="max-width:92%;max-height:92%;object-fit:contain;box-shadow:0 8px 30px rgba(0,0,0,0.5);border-radius:8px;" /></body></html>`
-          );
-        } else if (att.type === 'application/pdf') {
-          win.location.href = att.dataUrl;
-        } else {
-          handleDownloadAttachment(att);
-        }
+      const blob = dataUrlToBlob(att.dataUrl);
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        return;
       }
-    } else {
-      handleDownloadAttachment(att);
     }
+    handleDownloadAttachment(att);
   };
 
   const handleDownloadDeliveryReport = () => {
@@ -139,7 +225,7 @@ Generated by ReachInbox Architecture at ${new Date().toISOString()}
   };
 
   return (
-    <div className="flex-1 bg-white flex flex-col h-full overflow-y-auto">
+    <div className="flex-1 bg-white flex flex-col h-full overflow-y-auto relative">
       {/* Top Header Bar */}
       <div className="h-16 px-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
         <div className="flex items-center space-x-4 min-w-0">
@@ -246,59 +332,201 @@ Generated by ReachInbox Architecture at ${new Date().toISOString()}
               <span>Attachments ({attachments.length} {attachments.length === 1 ? 'file' : 'files'})</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {attachments.map((att) => (
-                <div
-                  key={att.id}
-                  onClick={() => handleViewAttachment(att)}
-                  className="border border-gray-200 rounded-xl p-3 flex items-center justify-between bg-gray-50/60 hover:bg-gray-100/80 transition-colors cursor-pointer group"
-                  title={`Click to view/download ${att.name}`}
-                >
-                  <div className="flex items-center space-x-3 truncate min-w-0">
-                    <div
-                      className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${getFileBadgeColor(
-                        att.name,
-                        att.type
-                      )}`}
-                    >
-                      {getFileBadgeLabel(att.name, att.type)}
+              {attachments.map((att) => {
+                const img = isImage(att.name, att.type);
+                const pdf = isPdf(att.name, att.type);
+
+                return (
+                  <div
+                    key={att.id}
+                    onClick={() => setPreviewAttachment(att)}
+                    className="border border-gray-200 rounded-xl p-3 flex items-center justify-between bg-gray-50/70 hover:bg-gray-100/90 transition-all cursor-pointer group shadow-2xs hover:shadow-xs"
+                    title={`Click to preview ${att.name}`}
+                  >
+                    <div className="flex items-center space-x-3 truncate min-w-0">
+                      {/* Image Thumbnail or File Type Badge */}
+                      {img && att.dataUrl ? (
+                        <div className="w-10 h-10 rounded-lg overflow-hidden border border-gray-200 bg-white shrink-0 flex items-center justify-center">
+                          <img
+                            src={att.dataUrl}
+                            alt={att.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${getFileBadgeColor(
+                            att.name,
+                            att.type
+                          )}`}
+                        >
+                          {getFileBadgeLabel(att.name, att.type)}
+                        </div>
+                      )}
+
+                      <div className="truncate">
+                        <p className="text-xs font-medium text-gray-900 truncate group-hover:text-[#00A854] transition-colors">
+                          {att.name}
+                        </p>
+                        <p className="text-[11px] text-gray-400 font-mono flex items-center space-x-1.5 mt-0.5">
+                          <span>{att.size}</span>
+                          <span className="text-gray-300">•</span>
+                          <span className="text-[#00A854] font-medium group-hover:underline">Click to preview</span>
+                        </p>
+                      </div>
                     </div>
-                    <div className="truncate">
-                      <p className="text-xs font-medium text-gray-800 truncate group-hover:text-[#00A854] transition-colors">
-                        {att.name}
-                      </p>
-                      <p className="text-[11px] text-gray-400 font-mono">{att.size}</p>
+
+                    {/* Action buttons on card */}
+                    <div className="flex items-center space-x-1 shrink-0 ml-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPreviewAttachment(att);
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-gray-900 hover:bg-white rounded-lg transition-colors"
+                        title="Preview attachment (Gmail-style)"
+                      >
+                        <Eye className="w-4 h-4 text-gray-600" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownloadAttachment(att);
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-[#00A854] hover:bg-white rounded-lg transition-colors"
+                        title="Download file directly"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-1 shrink-0 ml-2">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleViewAttachment(att);
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-white rounded-lg transition-colors"
-                      title="Open in new tab"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownloadAttachment(att);
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-[#00A854] hover:bg-white rounded-lg transition-colors"
-                      title="Download file"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
       </div>
+
+      {/* Gmail-Style Full Screen Attachment Preview Modal (Lightbox) */}
+      {previewAttachment && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex flex-col animate-in fade-in duration-150">
+          {/* Top Bar */}
+          <div className="h-16 px-6 bg-black/40 border-b border-white/10 flex items-center justify-between shrink-0 select-none">
+            <div className="flex items-center space-x-3.5 truncate min-w-0">
+              <div
+                className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${getFileBadgeColor(
+                  previewAttachment.name,
+                  previewAttachment.type
+                )}`}
+              >
+                {getFileBadgeLabel(previewAttachment.name, previewAttachment.type)}
+              </div>
+              <div className="truncate">
+                <h3 className="text-sm font-semibold text-white truncate max-w-lg">
+                  {previewAttachment.name}
+                </h3>
+                <span className="text-xs text-white/50 font-mono">{previewAttachment.size}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3 shrink-0">
+              {/* Open in new tab */}
+              <button
+                type="button"
+                onClick={() => handleOpenInNewTab(previewAttachment)}
+                className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors"
+                title="Open in new window"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Open in tab</span>
+              </button>
+
+              {/* Download button */}
+              <button
+                type="button"
+                onClick={() => handleDownloadAttachment(previewAttachment)}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#00A854] hover:bg-[#009249] text-white text-xs font-semibold transition-colors"
+                title="Download file"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download</span>
+              </button>
+
+              {/* Close preview button */}
+              <button
+                type="button"
+                onClick={() => setPreviewAttachment(null)}
+                className="p-2 text-white/70 hover:text-white hover:bg-white/15 rounded-full transition-colors ml-1"
+                title="Close preview (Esc)"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Viewer Center Stage */}
+          <div
+            className="flex-1 flex items-center justify-center p-4 sm:p-6 overflow-hidden"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setPreviewAttachment(null);
+            }}
+          >
+            {/* 1. IMAGE VIEWER */}
+            {isImage(previewAttachment.name, previewAttachment.type) ? (
+              <div className="relative max-w-5xl max-h-[82vh] flex items-center justify-center">
+                <img
+                  src={previewAttachment.dataUrl}
+                  alt={previewAttachment.name}
+                  className="max-w-full max-h-[82vh] object-contain rounded-xl shadow-2xl ring-1 ring-white/10 select-none"
+                />
+              </div>
+            ) : isPdf(previewAttachment.name, previewAttachment.type) ? (
+              /* 2. PDF VIEWER (Interactive embedded PDF pages) */
+              <div className="w-full max-w-5xl h-[82vh] bg-white rounded-xl shadow-2xl overflow-hidden ring-1 ring-white/10 flex flex-col">
+                <iframe
+                  src={previewBlobUrl || previewAttachment.dataUrl}
+                  title={previewAttachment.name}
+                  className="w-full h-full border-0 rounded-xl"
+                />
+              </div>
+            ) : isText(previewAttachment.name, previewAttachment.type) ? (
+              /* 3. TEXT / CODE VIEWER */
+              <div className="w-full max-w-4xl max-h-[80vh] bg-gray-900 text-gray-100 rounded-xl shadow-2xl p-6 overflow-auto font-mono text-xs ring-1 ring-white/10">
+                <div className="text-gray-400 pb-3 mb-3 border-b border-gray-800 text-[11px] flex justify-between">
+                  <span>File: {previewAttachment.name}</span>
+                  <span>{previewAttachment.size}</span>
+                </div>
+                <pre className="whitespace-pre-wrap leading-relaxed">
+                  {getTextContent(previewAttachment)}
+                </pre>
+              </div>
+            ) : (
+              /* 4. GENERIC FILE VIEWER */
+              <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center shadow-2xl space-y-4">
+                <div className="w-16 h-16 bg-gray-100 text-gray-600 rounded-2xl flex items-center justify-center mx-auto text-xl font-bold">
+                  {getFileBadgeLabel(previewAttachment.name, previewAttachment.type)}
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-gray-900">{previewAttachment.name}</h4>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {previewAttachment.size} • File ready for download
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadAttachment(previewAttachment)}
+                  className="w-full py-2.5 bg-[#00A854] hover:bg-[#009249] text-white text-sm font-semibold rounded-xl transition-colors flex items-center justify-center space-x-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download file to view</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
