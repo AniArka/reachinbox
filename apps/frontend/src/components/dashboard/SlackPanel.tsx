@@ -34,6 +34,13 @@ export const SlackPanel: React.FC<SlackPanelProps> = ({ status, loading, onRefre
     }
   };
 
+  const handleConnectSlack = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const token = localStorage.getItem('reachinbox_token') || '';
+    const connectUrl = `${BACKEND_URL}/api/slack/connect?token=${encodeURIComponent(token)}`;
+    window.location.href = connectUrl;
+  };
+
   if (loading) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
@@ -119,7 +126,8 @@ export const SlackPanel: React.FC<SlackPanelProps> = ({ status, loading, onRefre
 
           <a
             href={`${BACKEND_URL}/api/slack/connect`}
-            className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 shadow-sm hover:shadow transition-all"
+            onClick={handleConnectSlack}
+            className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 shadow-sm hover:shadow transition-all cursor-pointer"
           >
             <span>Connect Slack Workspace</span>
             <ArrowUpRight className="w-4 h-4" />

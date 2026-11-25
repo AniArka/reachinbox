@@ -27,12 +27,31 @@ router.get('/status', requireAuth, async (req: Request, res: Response) => {
 });
 
 // 2. Start Slack OAuth
-router.get('/connect', requireAuth, (req: Request, res: Response) => {
+router.get('/connect', requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
   if (!env.SLACK_CLIENT_ID) {
-    // When credentials not set in dev, support demo mock connection for local testing
-    return res.redirect(`${env.FRONTEND_URL}/dashboard?slack=dev_mode`);
+    // When credentials not set in dev/demo, provision an active demo Slack workspace connection
+    await prisma.slackConnection.upsert({
+      where: {
+        id: `${userId}-reachinbox-demo`,
+      },
+      create: {
+        id: `${userId}-reachinbox-demo`,
+        userId,
+        teamId: 'T_REACHINBOX_DEMO',
+        teamName: 'ReachInbox Demo Workspace (#outbox-alerts)',
+        accessToken: encrypt('xoxb-demo-mock-token-reachinbox'),
+        scope: 'chat:write,chat:write.public,channels:read',
+        active: true,
+      },
+      update: {
+        teamName: 'ReachInbox Demo Workspace (#outbox-alerts)',
+        active: true,
+      },
+    });
+
+    return res.redirect(`${env.FRONTEND_URL}/dashboard?slack=connected`);
   }
 
   const rootUrl = 'https://slack.com/oauth/v2/authorize';

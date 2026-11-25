@@ -93,6 +93,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   useEffect(() => {
     loadInitialData();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('slack')) {
+      setActiveTab('slack');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, [loadInitialData]);
 
   useEffect(() => {
