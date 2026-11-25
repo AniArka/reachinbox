@@ -13,6 +13,8 @@ interface SentTableProps {
     total: number;
   };
   onPageChange: (newPage: number) => void;
+  starredIds?: Set<string>;
+  onToggleStar?: (emailId: string) => void;
 }
 
 export const SentTable: React.FC<SentTableProps> = ({
@@ -21,6 +23,8 @@ export const SentTable: React.FC<SentTableProps> = ({
   onSelectEmail,
   pagination,
   onPageChange,
+  starredIds,
+  onToggleStar,
 }) => {
   if (loading) {
     return (
@@ -84,10 +88,21 @@ export const SentTable: React.FC<SentTableProps> = ({
               {/* Action / Star */}
               <div className="flex items-center space-x-2 shrink-0">
                 <button
-                  onClick={(e) => e.stopPropagation()}
-                  className="p-1 text-gray-300 hover:text-amber-400 transition-colors"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleStar?.(email.id);
+                  }}
+                  className="p-1 transition-colors"
+                  title={starredIds?.has(email.id) ? 'Unstar' : 'Star'}
                 >
-                  <Star className="w-4 h-4" />
+                  <Star
+                    className={`w-4 h-4 transition-colors ${
+                      starredIds?.has(email.id)
+                        ? 'fill-amber-400 text-amber-400'
+                        : 'text-gray-300 hover:text-amber-400'
+                    }`}
+                  />
                 </button>
               </div>
             </div>

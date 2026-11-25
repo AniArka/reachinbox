@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { User, Stats, Email, Sender, SlackStatus } from '../types';
 import { emailService } from '../services/emailService';
 import { Sidebar } from '../components/layout/Sidebar';
@@ -7,7 +7,7 @@ import { SentTable } from '../components/dashboard/SentTable';
 import { EmailDetailView } from '../components/dashboard/EmailDetailView';
 import { SlackPanel } from '../components/dashboard/SlackPanel';
 import { ComposeModal } from '../components/compose/ComposeModal';
-import { Search, Filter, RefreshCw } from 'lucide-react';
+import { Search, Filter, RefreshCw, Star } from 'lucide-react';
 
 interface DashboardProps {
   user: User | null;
@@ -29,6 +29,63 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   // Selected email for detail view (Figma node 59-4503)
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+
+  // Starred emails state (stored in localStorage)
+  const [starredIds, setStarredIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('reachinbox_starred_emails');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const handleToggleStar = (emailId: string) => {
+    setStarredIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(emailId)) {
+        next.delete(emailId);
+      } else {
+        next.add(emailId);
+      }
+      try {
+        localStorage.setItem('reachinbox_starred_emails', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
+
+  // Filter states
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const filterDropdownRef = useRef<HTMLDivElement>(null);
+  const [filterStarredOnly, setFilterStarredOnly] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterSenderId, setFilterSenderId] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+
+  // Close filter dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node)) {
+        setIsFilterOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const hasActiveFilters =
+    filterStarredOnly ||
+    filterStatus !== 'all' ||
+    filterSenderId !== 'all' ||
+    sortOrder !== 'desc';
+
+  const handleResetFilters = () => {
+    setFilterStarredOnly(false);
+    setFilterStatus('all');
+    setFilterSenderId('all');
+    setSortOrder('desc');
+  };
 
   // Search state (Elasticsearch)
   const [searchQuery, setSearchQuery] = useState('');
@@ -130,7 +187,56 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     setActiveTab(tab);
     setSelectedEmail(null);
     setPage(1);
+    handleResetFilters();
   };
+
+  // Filter & Sort Logic applied to current table list
+  const filterAndSortEmails = useCallback(
+    (list: Email[]) => {
+      let filtered = [...list];
+
+      // 1. Starred only
+      if (filterStarredOnly) {
+        filtered = filtered.filter((e) => starredIds.has(e.id));
+      }
+
+      // 2. Status filter
+      if (filterStatus !== 'all') {
+        filtered = filtered.filter((e) => e.status === filterStatus);
+      }
+
+      // 3. Sender filter
+      if (filterSenderId !== 'all') {
+        filtered = filtered.filter(
+          (e) => e.senderId === filterSenderId || e.sender?.email === filterSenderId
+        );
+      }
+
+      // 4. Sort order
+      if (sortOrder === 'asc') {
+        filtered.sort(
+          (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
+        );
+      } else {
+        filtered.sort(
+          (a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()
+        );
+      }
+
+      return filtered;
+    },
+    [filterStarredOnly, filterStatus, filterSenderId, sortOrder, starredIds]
+  );
+
+  const displayedScheduled = useMemo(
+    () => filterAndSortEmails(scheduledEmails),
+    [scheduledEmails, filterAndSortEmails]
+  );
+
+  const displayedSent = useMemo(
+    () => filterAndSortEmails(sentEmails),
+    [sentEmails, filterAndSortEmails]
+  );
 
   return (
     <div className="min-h-screen bg-white flex w-full overflow-hidden">
@@ -165,14 +271,134 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             </div>
 
             {/* Right Action Icons (Filter & Refresh) */}
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 relative" ref={filterDropdownRef}>
               <button
                 type="button"
-                className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
-                title="Filter"
+                onClick={() => setIsFilterOpen(!isFilterOpen)}
+                className={`p-2 rounded-full transition-colors relative ${
+                  isFilterOpen || hasActiveFilters
+                    ? 'bg-green-50 text-[#00A854]'
+                    : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+                title="Filter and sort emails"
               >
                 <Filter className="w-4 h-4" />
+                {hasActiveFilters && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#00A854] rounded-full ring-2 ring-white"></span>
+                )}
               </button>
+
+              {/* Filter Popover Dropdown */}
+              {isFilterOpen && (
+                <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 p-4 z-40 animate-in fade-in zoom-in-95">
+                  <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
+                    <span className="text-xs font-bold text-gray-900">Filter &amp; Sort</span>
+                    {hasActiveFilters && (
+                      <button
+                        type="button"
+                        onClick={handleResetFilters}
+                        className="text-[11px] text-[#00A854] hover:underline font-semibold"
+                      >
+                        Reset all
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 1. Starred toggle */}
+                  <div className="mb-3">
+                    <label className="flex items-center space-x-2 text-xs text-gray-700 cursor-pointer select-none hover:text-gray-900">
+                      <input
+                        type="checkbox"
+                        checked={filterStarredOnly}
+                        onChange={(e) => setFilterStarredOnly(e.target.checked)}
+                        className="rounded text-[#00A854] focus:ring-[#00A854] w-3.5 h-3.5 cursor-pointer accent-[#00A854]"
+                      />
+                      <span className="flex items-center space-x-1.5 font-medium">
+                        <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                        <span>Show starred only</span>
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* 2. Status filter */}
+                  <div className="mb-3">
+                    <label className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                      Status
+                    </label>
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className="w-full text-xs bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-gray-700 outline-none focus:ring-1 focus:ring-[#00A854]"
+                    >
+                      <option value="all">All statuses</option>
+                      {activeTab === 'scheduled' ? (
+                        <>
+                          <option value="scheduled">Scheduled</option>
+                          <option value="deferred">Deferred</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="sent">Sent (Delivered)</option>
+                          <option value="failed">Failed</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+
+                  {/* 3. Sender filter */}
+                  {senders.length > 0 && (
+                    <div className="mb-3">
+                      <label className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                        Sender Account
+                      </label>
+                      <select
+                        value={filterSenderId}
+                        onChange={(e) => setFilterSenderId(e.target.value)}
+                        className="w-full text-xs bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-gray-700 outline-none focus:ring-1 focus:ring-[#00A854]"
+                      >
+                        <option value="all">All Senders</option>
+                        {senders.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.email}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* 4. Sort Order */}
+                  <div className="mb-1">
+                    <label className="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                      Order
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSortOrder('desc')}
+                        className={`text-xs py-1.5 rounded-lg border text-center transition-colors font-medium ${
+                          sortOrder === 'desc'
+                            ? 'bg-[#E8F5E9] text-[#00A854] border-[#00A854]'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        Newest first
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSortOrder('asc')}
+                        className={`text-xs py-1.5 rounded-lg border text-center transition-colors font-medium ${
+                          sortOrder === 'asc'
+                            ? 'bg-[#E8F5E9] text-[#00A854] border-[#00A854]'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        Oldest first
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
@@ -195,23 +421,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               email={selectedEmail}
               onBack={() => setSelectedEmail(null)}
               onCancelCampaign={handleCancelCampaign}
+              isStarred={starredIds.has(selectedEmail.id)}
+              onToggleStar={handleToggleStar}
             />
           ) : activeTab === 'scheduled' ? (
             <ScheduledTable
-              emails={scheduledEmails}
+              emails={displayedScheduled}
               loading={loading}
               onSelectEmail={(email) => setSelectedEmail(email)}
               onCancelCampaign={handleCancelCampaign}
               pagination={pagination}
               onPageChange={(p) => setPage(p)}
+              starredIds={starredIds}
+              onToggleStar={handleToggleStar}
             />
           ) : activeTab === 'sent' ? (
             <SentTable
-              emails={sentEmails}
+              emails={displayedSent}
               loading={loading}
               onSelectEmail={(email) => setSelectedEmail(email)}
               pagination={pagination}
               onPageChange={(p) => setPage(p)}
+              starredIds={starredIds}
+              onToggleStar={handleToggleStar}
             />
           ) : (
             <div className="p-8 max-w-4xl mx-auto">
