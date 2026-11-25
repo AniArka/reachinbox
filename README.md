@@ -221,8 +221,3 @@ npm run dev:frontend
 - **Bull Board Queue Monitor**: [http://localhost:5000/admin/queues](http://localhost:5000/admin/queues)
 
 ---
-
-
-## 9. Submission Details
-- **Repository**: Private GitHub repository ([AniArka/reachinbox](https://github.com/AniArka/reachinbox))
-- **Invited Reviewers**: `Mitrajit` and `Yadav036`
