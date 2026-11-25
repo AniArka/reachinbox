@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Papa from 'papaparse';
 import { Sender } from '../../types';
+import { EmailAttachment } from '../../utils/attachmentUtils';
 import { emailService } from '../../services/emailService';
 import {
   ArrowLeft,
@@ -61,7 +62,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // File Attachments State
-  const [attachments, setAttachments] = useState<{ id: string; name: string; size: string }[]>([]);
+  const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -76,22 +77,42 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleFileAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newItems = Array.from(files).map((f) => {
-      let sizeText = `${(f.size / 1024).toFixed(1)} KB`;
-      if (f.size > 1024 * 1024) {
-        sizeText = `${(f.size / (1024 * 1024)).toFixed(1)} MB`;
-      }
-      return {
-        id: `${f.name}-${Date.now()}-${Math.random()}`,
-        name: f.name,
-        size: sizeText,
-      };
+    const fileList = Array.from(files);
+    const readPromises = fileList.map((file) => {
+      return new Promise<EmailAttachment>((resolve) => {
+        let sizeText = `${(file.size / 1024).toFixed(1)} KB`;
+        if (file.size > 1024 * 1024) {
+          sizeText = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+          resolve({
+            id: `${file.name}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+            name: file.name,
+            size: sizeText,
+            type: file.type || 'application/octet-stream',
+            dataUrl: (reader.result as string) || '',
+          });
+        };
+        reader.onerror = () => {
+          resolve({
+            id: `${file.name}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+            name: file.name,
+            size: sizeText,
+            type: file.type || 'application/octet-stream',
+            dataUrl: '',
+          });
+        };
+        reader.readAsDataURL(file);
+      });
     });
 
+    const newItems = await Promise.all(readPromises);
     setAttachments((prev) => [...prev, ...newItems]);
     e.target.value = '';
   };
@@ -206,7 +227,8 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
       let finalBody = body || 'Hello from ReachInbox Scheduler!';
       if (attachments.length > 0) {
         const attachList = attachments.map((a) => `📎 ${a.name} (${a.size})`).join('\n');
-        finalBody = `${finalBody}\n\n[Attached Files]:\n${attachList}`;
+        const jsonPayload = JSON.stringify(attachments);
+        finalBody = `${finalBody}\n\n[Attached Files]:\n${attachList}\n\n---REACHINBOX_ATTACHMENTS---\n${jsonPayload}`;
       }
 
       // If 'now', start immediately; if 'later', parse startAt or default to 5 mins from now
