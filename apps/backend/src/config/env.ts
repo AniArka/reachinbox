@@ -19,8 +19,26 @@ for (const key of new Set([...Object.keys(backendEnv), ...Object.keys(rootEnv)])
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().default('5000').transform((val) => parseInt(val, 10)),
-  FRONTEND_URL: z.string().default('http://localhost:5173').transform((val) => val.replace(/\/+$/, '')),
-  BACKEND_URL: z.string().default('http://localhost:5000').transform((val) => val.replace(/\/+$/, '')),
+  FRONTEND_URL: z
+    .string()
+    .default('http://localhost:5173')
+    .transform((val) => {
+      let cleaned = val.trim().replace(/\/+$/, '');
+      if (!cleaned.startsWith('http://') && !cleaned.startsWith('https://')) {
+        cleaned = `https://${cleaned}`;
+      }
+      return cleaned;
+    }),
+  BACKEND_URL: z
+    .string()
+    .default('http://localhost:5000')
+    .transform((val) => {
+      let cleaned = val.trim().replace(/\/+$/, '');
+      if (!cleaned.startsWith('http://') && !cleaned.startsWith('https://')) {
+        cleaned = `https://${cleaned}`;
+      }
+      return cleaned;
+    }),
 
   DATABASE_URL: z.string().default('postgresql://postgres:password@localhost:5432/reachinbox?schema=public'),
 

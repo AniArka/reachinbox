@@ -56,6 +56,34 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   const [isSendLaterOpen, setIsSendLaterOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // File Attachments State
+  const [attachments, setAttachments] = useState<{ id: string; name: string; size: string }[]>([]);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newItems = Array.from(files).map((f) => {
+      let sizeText = `${(f.size / 1024).toFixed(1)} KB`;
+      if (f.size > 1024 * 1024) {
+        sizeText = `${(f.size / (1024 * 1024)).toFixed(1)} MB`;
+      }
+      return {
+        id: `${f.name}-${Date.now()}-${Math.random()}`,
+        name: f.name,
+        size: sizeText,
+      };
+    });
+
+    setAttachments((prev) => [...prev, ...newItems]);
+    e.target.value = '';
+  };
+
+  const removeAttachment = (idToRemove: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== idToRemove));
+  };
+
   useEffect(() => {
     if (senders.length > 0 && !senderId) {
       setSenderId(senders[0].id);
@@ -160,9 +188,16 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
 
     try {
       setLoading(true);
+
+      let finalBody = body || 'Hello from ReachInbox Scheduler!';
+      if (attachments.length > 0) {
+        const attachList = attachments.map((a) => `📎 ${a.name} (${a.size})`).join('\n');
+        finalBody = `${finalBody}\n\n[Attached Files]:\n${attachList}`;
+      }
+
       await emailService.createCampaign({
         subject: subject || '(No Subject)',
-        body: body || 'Hello from ReachInbox Scheduler!',
+        body: finalBody,
         senderId: effectiveSenderId,
         recipients,
         startAt: new Date(startAt).toISOString(),
@@ -173,7 +208,10 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || err.message || 'Failed to schedule campaign');
+      const serverDetails = err.response?.data?.error?.details
+        ? err.response.data.error.details.map((d: any) => `${d.path}: ${d.message}`).join(', ')
+        : null;
+      setError(serverDetails || err.response?.data?.error?.message || err.message || 'Failed to schedule campaign');
     } finally {
       setLoading(false);
     }
@@ -197,12 +235,24 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
           </div>
 
           <div className="flex items-center space-x-3 relative">
+            {/* Hidden Attachment File Input */}
+            <input
+              type="file"
+              ref={attachmentInputRef}
+              onChange={handleFileAttachment}
+              multiple
+              className="hidden"
+            />
             <button
               type="button"
-              className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
+              onClick={() => attachmentInputRef.current?.click()}
+              className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors relative"
               title="Attach File"
             >
               <Paperclip className="w-4 h-4" />
+              {attachments.length > 0 && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-[#00A854] rounded-full ring-2 ring-white"></span>
+              )}
             </button>
 
             <button
@@ -499,6 +549,30 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
               placeholder="Type Your Reply..."
               className="w-full bg-transparent border-0 outline-none resize-none text-sm text-gray-800 placeholder-gray-400 mt-4 flex-1"
             ></textarea>
+
+            {/* Attached Files Preview */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-200/80 mt-auto shrink-0">
+                {attachments.map((att) => (
+                  <div
+                    key={att.id}
+                    className="flex items-center space-x-2 bg-white/95 border border-gray-200 rounded-xl px-3 py-1.5 text-xs text-gray-700 shadow-2xs"
+                  >
+                    <Paperclip className="w-3.5 h-3.5 text-[#00A854]" />
+                    <span className="font-medium truncate max-w-[160px]">{att.name}</span>
+                    <span className="text-[10px] text-gray-400 font-mono">({att.size})</span>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(att.id)}
+                      className="p-0.5 text-gray-400 hover:text-red-500 rounded-full transition-colors ml-1"
+                      title="Remove attachment"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
