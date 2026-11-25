@@ -1,6 +1,7 @@
 import React from 'react';
 import { User } from '../../types';
 import { Mail, ExternalLink, LogOut, PlusCircle, Activity } from 'lucide-react';
+import { BULL_BOARD_URL } from '../../services/api';
 
 interface NavbarProps {
   user: User | null;
@@ -38,7 +39,7 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onComposeClick, onLogout }
           <div className="flex items-center space-x-4">
             {/* Bull Board link */}
             <a
-              href="http://localhost:5000/admin/queues"
+              href={BULL_BOARD_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors border border-gray-200"
