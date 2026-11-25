@@ -2,9 +2,19 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { z } from 'zod';
 
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
-// Also load root .env if present
-dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+// Load both apps/backend/.env and root .env, ensuring non-empty values take precedence
+const backendEnv = dotenv.config({ path: path.resolve(__dirname, '../../.env') }).parsed || {};
+const rootEnv = dotenv.config({ path: path.resolve(__dirname, '../../../../.env') }).parsed || {};
+
+for (const key of new Set([...Object.keys(backendEnv), ...Object.keys(rootEnv)])) {
+  const rootVal = rootEnv[key];
+  const backendVal = backendEnv[key];
+  if (rootVal && rootVal.trim() !== '') {
+    process.env[key] = rootVal;
+  } else if (backendVal && backendVal.trim() !== '') {
+    process.env[key] = backendVal;
+  }
+}
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
