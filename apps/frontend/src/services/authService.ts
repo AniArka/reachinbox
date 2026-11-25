@@ -11,6 +11,14 @@ export const authService = {
     }
   },
 
+  async login(email?: string, password?: string): Promise<{ token: string; user: User }> {
+    const res = await api.post('/auth/login', { email, password });
+    if (res.data.token) {
+      localStorage.setItem('reachinbox_token', res.data.token);
+    }
+    return res.data;
+  },
+
   async demoLogin(): Promise<{ token: string; user: User }> {
     const res = await api.post('/auth/demo-login');
     if (res.data.token) {

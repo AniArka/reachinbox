@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { authService } from '../services/authService';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface LoginProps {
   onLoginSuccess: () => void;
@@ -8,18 +9,40 @@ interface LoginProps {
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('oliver.brown@domain.io');
   const [password, setPassword] = useState('••••••••');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Handle OAuth callback token in URL query
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const err = params.get('error');
+
+    if (err) {
+      setError(`OAuth failed: ${err}`);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (token) {
+      localStorage.setItem('reachinbox_token', token);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      onLoginSuccess();
+    }
+  }, [onLoginSuccess]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setLoading(true);
       setError(null);
-      await authService.demoLogin();
+      await authService.login(email, password);
       onLoginSuccess();
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || err.message || 'Login failed');
+      const msg =
+        err.response?.data?.error?.message ||
+        (err.message?.includes('Network Error')
+          ? 'Cannot connect to backend API at http://localhost:5000. Please ensure the backend is running (npm run dev:backend).'
+          : err.message || 'Login failed');
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -31,12 +54,12 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center p-4">
-      {/* Centered Login Card */}
+      {/* Centered Login Card (Figma node 59-6322) */}
       <div className="w-full max-w-[420px] bg-white rounded-2xl border border-gray-100 p-8 sm:p-10 shadow-sm">
         <h1 className="text-2xl font-bold text-gray-900 text-center mb-6">Login</h1>
 
         {error && (
-          <div className="mb-5 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">
+          <div className="mb-5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 leading-relaxed">
             {error}
           </div>
         )}
@@ -45,7 +68,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         <button
           type="button"
           onClick={handleGoogleLogin}
-          className="w-full bg-[#E8F5E9] hover:bg-[#d8eed9] text-gray-800 font-medium py-3 px-4 rounded-xl flex items-center justify-center space-x-3 transition-colors text-sm shadow-none"
+          className="w-full bg-[#E8F5E9] hover:bg-[#d8eed9] text-gray-800 font-medium py-3 px-4 rounded-xl flex items-center justify-center space-x-3 transition-colors text-sm shadow-none cursor-pointer"
         >
           <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
             <path
@@ -98,21 +121,35 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             <label className="block text-xs font-semibold text-gray-700 mb-1.5">
               Password
             </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full bg-[#F3F4F6] border-0 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-[#00A854] outline-none transition-all"
-              required
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-[#F3F4F6] border-0 rounded-xl pl-4 pr-11 py-3 text-sm text-gray-900 placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-[#00A854] outline-none transition-all"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-md"
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Submit Button (Vibrant Green per Figma) */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-[#00A854] hover:bg-[#009249] text-white font-medium py-3 px-4 rounded-xl text-sm transition-colors shadow-sm disabled:opacity-60 mt-2"
+            className="w-full bg-[#00A854] hover:bg-[#009249] text-white font-medium py-3 px-4 rounded-xl text-sm transition-colors shadow-sm disabled:opacity-60 mt-2 cursor-pointer"
           >
             {loading ? 'Logging in...' : 'Login'}
           </button>
