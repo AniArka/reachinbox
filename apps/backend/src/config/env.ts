@@ -41,11 +41,11 @@ const envSchema = z.object({
 
   GOOGLE_CLIENT_ID: z.string().optional().default(''),
   GOOGLE_CLIENT_SECRET: z.string().optional().default(''),
-  GOOGLE_CALLBACK_URL: z.string().default('http://localhost:5000/api/auth/google/callback'),
+  GOOGLE_CALLBACK_URL: z.string().optional().default(''),
 
   SLACK_CLIENT_ID: z.string().optional().default(''),
   SLACK_CLIENT_SECRET: z.string().optional().default(''),
-  SLACK_REDIRECT_URI: z.string().default('http://localhost:5000/api/slack/callback'),
+  SLACK_REDIRECT_URI: z.string().optional().default(''),
 
   ENABLE_ELASTICSEARCH: z
     .string()
@@ -58,7 +58,17 @@ const envSchema = z.object({
   TOKEN_ENCRYPTION_KEY: z.string().default('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
 });
 
-export const env = envSchema.parse(process.env);
+const parsed = envSchema.parse(process.env);
+
+export const env = {
+  ...parsed,
+  GOOGLE_CALLBACK_URL: parsed.GOOGLE_CALLBACK_URL && parsed.GOOGLE_CALLBACK_URL.trim() !== ''
+    ? parsed.GOOGLE_CALLBACK_URL
+    : `${parsed.BACKEND_URL}/api/auth/google/callback`,
+  SLACK_REDIRECT_URI: parsed.SLACK_REDIRECT_URI && parsed.SLACK_REDIRECT_URI.trim() !== ''
+    ? parsed.SLACK_REDIRECT_URI
+    : `${parsed.BACKEND_URL}/api/slack/callback`,
+};
 
 // Production security audit check
 if (env.NODE_ENV === 'production') {
