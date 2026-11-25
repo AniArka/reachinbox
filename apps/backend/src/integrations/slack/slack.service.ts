@@ -25,6 +25,13 @@ export class SlackNotificationService {
       }
 
       const accessToken = decrypt(connection.accessToken);
+
+      // Support demo connection mode without failing
+      if (accessToken.startsWith('xoxb-demo') || accessToken.startsWith('demo-')) {
+        console.log(`💬 [Slack - Demo Verified] Simulated notification sent to channel: ${connection.channel || '#outbox-alerts'}`);
+        return true;
+      }
+
       const client = new WebClient(accessToken);
 
       // Post to default incoming webhook or channel
